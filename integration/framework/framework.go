@@ -25,11 +25,11 @@ import (
 
 	"github.com/google/cadvisor/client"
 	"github.com/google/cadvisor/client/v2"
-	"github.com/google/cadvisor/integration/common"
 )
 
 var host = flag.String("host", "localhost", "Address of the host being tested")
 var port = flag.Int("port", 8080, "Port of the application on the host being tested")
+var sshOptions = flag.String("ssh-options", "", "Command line options for ssh")
 
 // Integration test framework.
 type Framework interface {
@@ -69,21 +69,10 @@ func New(t *testing.T) Framework {
 	}
 
 	// Try to see if non-localhost hosts are GCE instances.
-	var gceInstanceName string
-	hostname := *host
-	if hostname != "localhost" {
-		gceInstanceName = hostname
-		gceIp, err := common.GetGceIp(hostname)
-		if err == nil {
-			hostname = gceIp
-		}
-	}
-
 	fm := &realFramework{
 		hostname: HostnameInfo{
-			Host:            hostname,
-			Port:            *port,
-			GceInstanceName: gceInstanceName,
+			Host: *host,
+			Port: *port,
 		},
 		t:        t,
 		cleanups: make([]func(), 0),
@@ -97,6 +86,13 @@ func New(t *testing.T) Framework {
 
 	return fm
 }
+
+const (
+	Aufs         string = "aufs"
+	Overlay      string = "overlay"
+	DeviceMapper string = "devicemapper"
+	Unknown      string = ""
+)
 
 type DockerActions interface {
 	// Run the no-op pause Docker container and return its ID.
@@ -113,6 +109,9 @@ type DockerActions interface {
 	//   -> docker run busybox ping www.google.com
 	Run(args DockerRunArgs, cmd ...string) string
 	RunStress(args DockerRunArgs, cmd ...string) string
+
+	Version() []string
+	StorageDriver() string
 }
 
 type ShellActions interface {
@@ -149,9 +148,8 @@ type dockerActions struct {
 }
 
 type HostnameInfo struct {
-	Host            string
-	Port            int
-	GceInstanceName string
+	Host string
+	Port int
 }
 
 // Returns: http://<host>:<port>/
@@ -255,6 +253,44 @@ func (self dockerActions) Run(args DockerRunArgs, cmd ...string) string {
 	return containerId
 }
 
+func (self dockerActions) Version() []string {
+	dockerCommand := []string{"docker", "version", "-f", "'{{.Server.Version}}'"}
+	output, _ := self.fm.Shell().Run("sudo", dockerCommand...)
+	output = strings.TrimSpace(output)
+	ret := strings.Split(output, ".")
+	if len(ret) != 3 {
+		self.fm.T().Fatalf("invalid version %v", output)
+	}
+	return ret
+}
+
+func (self dockerActions) StorageDriver() string {
+	dockerCommand := []string{"docker", "info"}
+	output, _ := self.fm.Shell().Run("sudo", dockerCommand...)
+	if len(output) < 1 {
+		self.fm.T().Fatalf("failed to find docker storage driver - %v", output)
+	}
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "Storage Driver: ") {
+			idx := strings.LastIndex(line, ": ") + 2
+			driver := line[idx:]
+			switch driver {
+			case Aufs:
+				return Aufs
+			case Overlay:
+				return Overlay
+			case DeviceMapper:
+				return DeviceMapper
+			default:
+				return Unknown
+			}
+		}
+	}
+	self.fm.T().Fatalf("failed to find docker storage driver from info - %v", output)
+	return Unknown
+}
+
 func (self dockerActions) RunStress(args DockerRunArgs, cmd ...string) string {
 	dockerCommand := append(append(append(append([]string{"docker", "run", "-m=4M", "-d", "-t", "-i"}, args.Args...), args.Image), args.InnerArgs...), cmd...)
 
@@ -280,7 +316,11 @@ func (self shellActions) Run(command string, args ...string) (string, string) {
 		cmd = exec.Command(command, args...)
 	} else {
 		// We must SSH to the remote machine and run the command.
-		cmd = exec.Command("gcloud", append([]string{"compute", "ssh", common.GetZoneFlag(), self.fm.Hostname().GceInstanceName, "--", command}, args...)...)
+		args = append([]string{self.fm.Hostname().Host, "--", command}, args...)
+		if *sshOptions != "" {
+			args = append(strings.Split(*sshOptions, " "), args...)
+		}
+		cmd = exec.Command("ssh", args...)
 	}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -301,7 +341,11 @@ func (self shellActions) RunStress(command string, args ...string) (string, stri
 		cmd = exec.Command(command, args...)
 	} else {
 		// We must SSH to the remote machine and run the command.
-		cmd = exec.Command("gcloud", append([]string{"compute", "ssh", common.GetZoneFlag(), self.fm.Hostname().GceInstanceName, "--", command}, args...)...)
+		args = append([]string{self.fm.Hostname().Host, "--", command}, args...)
+		if *sshOptions != "" {
+			args = append(strings.Split(*sshOptions, " "), args...)
+		}
+		cmd = exec.Command("ssh", args...)
 	}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

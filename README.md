@@ -34,11 +34,11 @@ See the more detailed instructions in the [build page](docs/build.md). This incl
 
 ## InfluxDB and Cluster Monitoring
 
-cAdvisor supports exporting stats to [InfluxDB](http://influxdb.com). See the [documentation](docs/influxdb.md) for more information and examples.
+cAdvisor supports exporting stats to [InfluxDB](https://influxdb.com/). See the [documentation](docs/influxdb.md) for more information and examples.
 
 cAdvisor also exposes container stats as [Prometheus](http://prometheus.io) metrics. See the [documentation](docs/prometheus.md) for more information.
 
-[Heapster](https://github.com/GoogleCloudPlatform/heapster) enables cluster wide monitoring of containers using cAdvisor.
+[Heapster](https://github.com/kubernetes/heapster) enables cluster wide monitoring of containers using cAdvisor.
 
 ## Web UI
 
@@ -63,4 +63,4 @@ cAdvisor aims to improve the resource usage and performance characteristics of r
 
 ## Community
 
-Contributions, questions, and comments are all welcomed and encouraged! cAdvisor developers hang out in [#google-containers](http://webchat.freenode.net/?channels=google-containers) room on [freenode.net](http://freenode.net).  We also have the [google-containers Google Groups mailing list](https://groups.google.com/forum/#!forum/google-containers).
+Contributions, questions, and comments are all welcomed and encouraged! cAdvisor developers hang out on [Freenode](http://freenode.net/) IRC in the [#google-containers](http://webchat.freenode.net/?channels=google-containers) room & [Slack](https://kubernetes.slack.com) (get an invitation [here](http://slack.kubernetes.io/)). We also have the [google-containers Google Groups mailing list](https://groups.google.com/forum/#!forum/google-containers).
